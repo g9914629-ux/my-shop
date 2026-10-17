@@ -1,3 +1,4 @@
+
 import { adminAuth, adminDb } from './firebase-admin.js'
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 
@@ -16,16 +17,14 @@ export default async function handler(req, res) {
 
   try {
     user = await adminAuth.verifyIdToken(token)
-  } catch {
+  } catch (error) {
+    console.error('AUTH ERROR:', error?.message)
     return res.status(401).json({ error: 'Invalid authentication' })
   }
 
   const { orderId } = req.body || {}
 
-  if (
-    typeof orderId !== 'string' ||
-    !/^[A-Za-z0-9_-]{1,128}$/.test(orderId)
-  ) {
+  if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(orderId)) {
     return res.status(400).json({ error: 'Invalid order ID' })
   }
 
@@ -33,27 +32,21 @@ export default async function handler(req, res) {
   const chatId = process.env.TELEGRAM_CHAT_ID
 
   if (!botToken || !chatId) {
-    return res.status(500).json({
-      error: 'Telegram configuration is missing',
-    })
+    console.error('Telegram environment variables are missing')
+    return res.status(500).json({ error: 'Telegram configuration is missing' })
   }
 
   const orderRef = adminDb.collection('orders').doc(orderId)
-  let order
 
   try {
     const claim = await adminDb.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(orderRef)
 
-      if (!snapshot.exists) {
-        return { error: 'not_found' }
-      }
+      if (!snapshot.exists) return { error: 'not_found' }
 
       const data = snapshot.data()
 
-      if (data.userId !== user.uid) {
-        return { error: 'forbidden' }
-      }
+      if (data.userId !== user.uid) return { error: 'forbidden' }
 
       if (data.telegramNotificationStatus === 'sent') {
         return { error: 'already_sent' }
@@ -65,9 +58,7 @@ export default async function handler(req, res) {
           startedAt?.toMillis &&
           Date.now() - startedAt.toMillis() < 120000
 
-        if (recent) {
-          return { error: 'processing' }
-        }
+        if (recent) return { error: 'processing' }
       }
 
       transaction.update(orderRef, {
@@ -94,8 +85,7 @@ export default async function handler(req, res) {
       return res.status(409).json({ error: 'Notification is processing' })
     }
 
-    order = claim.data
-
+    const order = claim.data
     const customer = order.customer || {}
     const items = Array.isArray(order.items) ? order.items : []
 
@@ -109,8 +99,9 @@ export default async function handler(req, res) {
       `Address: ${String(customer.address || 'Not provided').slice(0, 250)}`,
       '',
       'Items:',
-      ...items.slice(0, 50).map((item) =>
-        `- ${String(item.name || 'Product').slice(0, 150)} × ${Number(item.quantity) || 0}`
+      ...items.slice(0, 50).map(
+        (item) =>
+          `- ${String(item.name || 'Product').slice(0, 150)} × ${Number(item.quantity) || 0}`
       ),
     ].join('\n').slice(0, 4000)
 
@@ -119,17 +110,15 @@ export default async function handler(req, res) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: message,
-        }),
+        body: JSON.stringify({ chat_id: chatId, text: message }),
       }
     )
 
     const payload = await response.json()
 
     if (!response.ok || !payload.ok) {
-      throw new Error('Telegram notification failed')
+      console.error('TELEGRAM API ERROR:', payload.description || response.status)
+      throw new Error('Telegram API rejected the message')
     }
 
     await orderRef.update({
@@ -138,13 +127,13 @@ export default async function handler(req, res) {
     })
 
     return res.status(200).json({ ok: true })
-  } catch {
+  } catch (error) {
+    console.error('ORDER NOTIFICATION ERROR:', error?.message)
+
     try {
-      await orderRef.update({
-        telegramNotificationStatus: 'failed',
-      })
-    } catch {
-      // Do not expose internal server details.
+      await orderRef.update({ telegramNotificationStatus: 'failed' })
+    } catch (updateError) {
+      console.error('ORDER STATUS UPDATE ERROR:', updateError?.message)
     }
 
     return res.status(502).json({
