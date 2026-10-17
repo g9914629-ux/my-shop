@@ -10,7 +10,11 @@ function getAdminApp() {
 
   const privateKey = process.env.FIREBASE_PRIVATE_KEY
 
-  if (!process.env.FIREBASE_CLIENT_EMAIL || !privateKey) {
+  if (
+    !process.env.FIREBASE_PROJECT_ID ||
+    !process.env.FIREBASE_CLIENT_EMAIL ||
+    !privateKey
+  ) {
     throw new Error('Firebase Admin credentials are missing')
   }
 
