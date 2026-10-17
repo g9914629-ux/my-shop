@@ -1,14 +1,23 @@
 
-import { buildTelegramOrderMessage } from './order'
+import { auth } from '../firebase'
 
 export async function sendOrderToTelegram(order) {
+  const user = auth.currentUser
+
+  if (!user) {
+    throw new Error('Please sign in before sending an order')
+  }
+
+  const idToken = await user.getIdToken()
+
   const response = await fetch('/api/send-telegram', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
     },
     body: JSON.stringify({
-      text: buildTelegramOrderMessage(order),
+      orderId: order.id,
     }),
   })
 
