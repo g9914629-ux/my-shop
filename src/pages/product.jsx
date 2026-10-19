@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext, useParams } from 'react-router-dom'
 import { auth, db } from '../firebase'
 import {
   addDoc,
@@ -29,6 +29,12 @@ const productTranslations = {
     writeReview: 'Напиши текст отзыва.',
     reviewAdded: 'Отзыв добавлен!',
     reviewError: 'Не удалось добавить отзыв.',
+    back: 'Назад в каталог',
+    categoryLabel: 'Категория',
+    colorLabel: 'Цвет',
+    priceLabel: 'Цена',
+    notFound: 'Товар не найден.',
+    reviewLoading: 'Загружаем отзывы...',
     collection: 'Коллекция 2026',
     heading1: 'Найди свой',
     heading2: 'ритм.',
@@ -57,6 +63,12 @@ const productTranslations = {
     writeReview: 'Пикирдин текстин жаз.',
     reviewAdded: 'Пикир кошулду!',
     reviewError: 'Пикир кошулган жок.',
+    back: 'Каталогго кайтуу',
+    categoryLabel: 'Категория',
+    colorLabel: 'Түсү',
+    priceLabel: 'Баасы',
+    notFound: 'Товар табылган жок.',
+    reviewLoading: 'Пикирлер жүктөлүүдө...',
     collection: '2026 коллекциясы',
     heading1: 'Өз ыргагыңды',
     heading2: 'тап.',
@@ -85,6 +97,12 @@ const productTranslations = {
     writeReview: 'Write your review.',
     reviewAdded: 'Review added!',
     reviewError: 'Could not add review.',
+    back: 'Back to catalog',
+    categoryLabel: 'Category',
+    colorLabel: 'Color',
+    priceLabel: 'Price',
+    notFound: 'Product not found.',
+    reviewLoading: 'Loading reviews...',
     collection: 'Collection 2026',
     heading1: 'Find your',
     heading2: 'rhythm.',
@@ -103,92 +121,22 @@ function ProductCard({
   addToCart,
   favorites,
   toggleFavorite,
+  preferencesLoading,
   t,
 }) {
-  const [reviews, setReviews] = useState([])
-  const [rating, setRating] = useState('5')
-  const [reviewText, setReviewText] = useState('')
-  const [reviewMessage, setReviewMessage] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-
   const isFavorite = favorites.includes(item.id)
-
-  useEffect(() => {
-    const reviewsQuery = query(
-      collection(db, 'reviews'),
-      where('productId', '==', item.id)
-    )
-
-    const unsubscribe = onSnapshot(
-      reviewsQuery,
-      (snapshot) => {
-        setReviews(
-          snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }))
-        )
-      },
-      (error) => {
-        console.error('Ошибка загрузки отзывов:', error)
-      }
-    )
-
-    return unsubscribe
-  }, [item.id])
-
-  async function handleReviewSubmit(event) {
-    event.preventDefault()
-    setReviewMessage('')
-
-    const currentUser = auth.currentUser
-
-    if (!currentUser) {
-      setReviewMessage(t('loginMessage'))
-      return
-    }
-
-    if (!reviewText.trim()) {
-      setReviewMessage(t('writeReview'))
-      return
-    }
-
-    try {
-      setSubmitting(true)
-
-      await addDoc(collection(db, 'reviews'), {
-        productId: item.id,
-        productName: item.name,
-        userId: currentUser.uid,
-        userName:
-          currentUser.displayName ||
-          currentUser.email ||
-          'Покупатель',
-        rating: Number(rating),
-        text: reviewText.trim(),
-        createdAt: serverTimestamp(),
-      })
-
-      setReviewText('')
-      setRating('5')
-      setReviewMessage(t('reviewAdded'))
-    } catch (error) {
-      console.error(error)
-      setReviewMessage(t('reviewError'))
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   return (
     <article className="product-card">
       <div className="product-image-wrap">
-        <img
-          className="product-image"
-          src={item.image}
-          alt={item.name}
-          loading="lazy"
-        />
+        <Link className="product-image-link" to={`/product/${item.id}`}>
+          <img
+            className="product-image"
+            src={item.image}
+            alt={item.name}
+            loading="lazy"
+          />
+        </Link>
 
         {item.tag && (
           <span className="product-tag">{item.tag}</span>
@@ -198,6 +146,7 @@ function ProductCard({
           type="button"
           className="quick-add"
           onClick={() => addToCart(item)}
+          disabled={preferencesLoading}
           aria-label={`${t('addCart')}: ${item.name}`}
           title={t('addCart')}
         >
@@ -210,6 +159,7 @@ function ProductCard({
             isFavorite ? 'is-favorite' : ''
           }`}
           onClick={() => toggleFavorite(item.id)}
+          disabled={preferencesLoading}
           aria-label={
             isFavorite
               ? t('removeFavorite')
@@ -225,7 +175,7 @@ function ProductCard({
         </button>
       </div>
 
-      <div className="product-meta">
+      <Link className="product-meta product-card-details" to={`/product/${item.id}`}>
         <div>
           <h3>{item.name}</h3>
           <p>{item.color}</p>
@@ -233,87 +183,7 @@ function ProductCard({
         <strong>
           {Number(item.price).toLocaleString('ru-RU')}
         </strong>
-      </div>
-
-      <section className="product-reviews">
-        <h4>{t('reviews')} ({reviews.length})</h4>
-
-        {reviews.length === 0 && (
-          <p>{t('noReviews')}</p>
-        )}
-
-        {reviews.map((review) => (
-          <div key={review.id} className="review-item">
-            <strong>{review.userName}</strong>
-            <p>{'⭐'.repeat(review.rating || 0)}</p>
-            <p>{review.text}</p>
-          </div>
-        ))}
-
-        <form
-          onSubmit={handleReviewSubmit}
-          className="checkout-form"
-        >
-          <label>
-            <span>{t('rating')}</span>
-
-            <div className="rating-stars">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  className={
-                    Number(rating) >= star
-                      ? 'rating-star selected'
-                      : 'rating-star'
-                  }
-                  onClick={() => setRating(String(star))}
-                  aria-label={`${star} / 5`}
-                >
-                  ★
-                </button>
-              ))}
-
-              <span className="rating-number">
-                {rating}/5
-              </span>
-            </div>
-          </label>
-
-          <label>
-            <span>{t('yourReview')}</span>
-            <textarea
-              value={reviewText}
-              onChange={(event) =>
-                setReviewText(event.target.value)
-              }
-              placeholder={t('reviewPlaceholder')}
-              rows={3}
-              maxLength={1000}
-              required
-            />
-          </label>
-
-          {auth.currentUser ? (
-            <button
-              className="button button-dark"
-              type="submit"
-              disabled={submitting}
-            >
-              {submitting ? t('sending') : t('leaveReview')}
-            </button>
-          ) : (
-            <p>
-              <Link to="/login">{t('loginFirst')}</Link>
-              {t('toReview')}
-            </p>
-          )}
-
-          {reviewMessage && (
-            <p role="status">{reviewMessage}</p>
-          )}
-        </form>
-      </section>
+      </Link>
     </article>
   )
 }
@@ -323,6 +193,7 @@ export function ProductGrid({ items = [] }) {
     addToCart,
     favorites = [],
     toggleFavorite,
+    preferencesLoading,
     language = 'ru',
   } = useOutletContext()
 
@@ -340,6 +211,7 @@ export function ProductGrid({ items = [] }) {
           addToCart={addToCart}
           favorites={favorites}
           toggleFavorite={toggleFavorite}
+          preferencesLoading={preferencesLoading}
           t={t}
         />
       ))}
@@ -441,6 +313,275 @@ function Product() {
       ) : (
         <p className="catalog-message">{t('empty')}</p>
       )}
+    </main>
+  )
+}
+
+export function ProductDetails() {
+  const { productId } = useParams()
+  const {
+    products = [],
+    productsLoading,
+    addToCart,
+    favorites = [],
+    toggleFavorite,
+    preferencesLoading,
+    language = 'ru',
+    user,
+  } = useOutletContext()
+  const dictionary =
+    productTranslations[language] || productTranslations.ru
+  const t = (key) => dictionary[key] || key
+  const reviewErrorMessage = dictionary.reviewError
+  const product = products.find((item) => String(item.id) === productId)
+  const [reviewState, setReviewState] = useState({
+    productId: null,
+    reviews: [],
+    loading: true,
+    error: '',
+  })
+  const [rating, setRating] = useState('5')
+  const [reviewText, setReviewText] = useState('')
+  const [reviewMessage, setReviewMessage] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const isFavorite = product && favorites.includes(product.id)
+
+  useEffect(() => {
+    if (!product) return undefined
+
+    const currentProductId = product.id
+    const reviewsQuery = query(
+      collection(db, 'reviews'),
+      where('status', '==', 'approved')
+    )
+
+    return onSnapshot(
+      reviewsQuery,
+      (snapshot) => {
+        setReviewState({
+          productId: currentProductId,
+          loading: false,
+          error: '',
+          reviews: snapshot.docs
+            .filter((review) => review.data().productId === currentProductId)
+            .map((review) => ({
+              id: review.id,
+              ...review.data(),
+            }))
+            .sort(
+              (first, second) =>
+                (second.createdAt?.seconds || 0) -
+                (first.createdAt?.seconds || 0)
+            ),
+        })
+      },
+      (error) => {
+        console.error('Ошибка загрузки отзывов:', error)
+        setReviewState({
+          productId: currentProductId,
+          reviews: [],
+          loading: false,
+          error: reviewErrorMessage,
+        })
+      }
+    )
+  }, [product, reviewErrorMessage])
+
+  async function handleReviewSubmit(event) {
+    event.preventDefault()
+    setReviewMessage('')
+
+    if (!user || !auth.currentUser) {
+      setReviewMessage(t('loginMessage'))
+      return
+    }
+
+    if (!reviewText.trim()) {
+      setReviewMessage(t('writeReview'))
+      return
+    }
+
+    try {
+      setSubmitting(true)
+      await addDoc(collection(db, 'reviews'), {
+        productId: product.id,
+        productName: product.name,
+        userId: auth.currentUser.uid,
+        userName:
+          auth.currentUser.displayName ||
+          auth.currentUser.email ||
+          'Покупатель',
+        rating: Number(rating),
+        text: reviewText.trim(),
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      })
+      setReviewText('')
+      setRating('5')
+      setReviewMessage(t('reviewAdded'))
+    } catch (error) {
+      console.error(error)
+      setReviewMessage(t('reviewError'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (productsLoading) {
+    return <main className="page-width product-detail-page"><p>{t('loading')}</p></main>
+  }
+
+  if (!product) {
+    return (
+      <main className="page-width product-detail-page">
+        <p className="catalog-message">{t('notFound')}</p>
+        <Link className="text-link" to="/product">{t('back')}</Link>
+      </main>
+    )
+  }
+
+  const locale =
+    language === 'kg' ? 'ky-KG' :
+    language === 'en' ? 'en-US' :
+    'ru-RU'
+  const reviews =
+    reviewState.productId === product.id ? reviewState.reviews : []
+  const reviewsLoading =
+    reviewState.productId !== product.id || reviewState.loading
+  const reviewsError =
+    reviewState.productId === product.id ? reviewState.error : ''
+  const averageRating = reviews.length
+    ? (
+        reviews.reduce((total, review) => total + Number(review.rating || 0), 0) /
+        reviews.length
+      ).toFixed(1)
+    : null
+
+  return (
+    <main className="page-width product-detail-page">
+      <Link className="text-link product-back-link" to="/product">
+        <span aria-hidden="true">←</span> {t('back')}
+      </Link>
+
+      <section className="product-detail">
+        <div className="product-detail-image-wrap">
+          <img src={product.image} alt={product.name} />
+          {product.tag && <span className="product-tag">{product.tag}</span>}
+        </div>
+
+        <div className="product-detail-info">
+          <p className="eyebrow">{product.category}</p>
+          <h1>{product.name}</h1>
+          <p className="product-detail-price">
+            {Number(product.price).toLocaleString(locale)}
+          </p>
+          <dl className="product-specifications">
+            <div>
+              <dt>{t('categoryLabel')}</dt>
+              <dd>{product.category || '—'}</dd>
+            </div>
+            <div>
+              <dt>{t('colorLabel')}</dt>
+              <dd>{product.color || '—'}</dd>
+            </div>
+          </dl>
+          <div className="product-detail-actions">
+            <button
+              className="button button-dark"
+              type="button"
+              onClick={() => addToCart(product)}
+              disabled={preferencesLoading}
+            >
+              {t('addCart')}
+            </button>
+            <button
+              className={`button favorite-detail-button ${isFavorite ? 'is-favorite' : ''}`}
+              type="button"
+              onClick={() => toggleFavorite(product.id)}
+              disabled={preferencesLoading}
+            >
+              {isFavorite ? '♥' : '♡'} {isFavorite ? t('removeFavorite') : t('addFavorite')}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="product-detail-reviews">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">{t('reviews')}</p>
+            <h2>
+              {t('reviews')} ({reviews.length})
+              {averageRating && <span className="review-average"> · ★ {averageRating}/5</span>}
+            </h2>
+          </div>
+        </div>
+
+        {reviewsLoading ? (
+          <p>{t('reviewLoading')}</p>
+        ) : reviewsError ? (
+          <p className="admin-error" role="alert">{reviewsError}</p>
+        ) : reviews.length ? (
+          <div className="product-detail-review-list">
+            {reviews.map((review) => (
+              <article key={review.id} className="review-item">
+                <div className="review-heading">
+                  <strong>{review.userName || 'Покупатель'}</strong>
+                  <span className="review-rating" aria-label={`${review.rating} / 5`}>
+                    {'★'.repeat(Number(review.rating) || 0)}
+                    {'☆'.repeat(5 - (Number(review.rating) || 0))}
+                  </span>
+                </div>
+                <p>{review.text}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p>{t('noReviews')}</p>
+        )}
+
+        <form onSubmit={handleReviewSubmit} className="product-review-form">
+          <h3>{t('leaveReview')}</h3>
+          {user ? (
+            <>
+              <label>
+                <span>{t('rating')}</span>
+                <div className="rating-stars">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      className={Number(rating) >= star ? 'rating-star selected' : 'rating-star'}
+                      onClick={() => setRating(String(star))}
+                      aria-label={`${star} / 5`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                  <span className="rating-number">{rating}/5</span>
+                </div>
+              </label>
+              <label>
+                <span>{t('yourReview')}</span>
+                <textarea
+                  value={reviewText}
+                  onChange={(event) => setReviewText(event.target.value)}
+                  placeholder={t('reviewPlaceholder')}
+                  rows={4}
+                  maxLength={1000}
+                  required
+                />
+              </label>
+              <button className="button button-dark" type="submit" disabled={submitting}>
+                {submitting ? t('sending') : t('leaveReview')}
+              </button>
+            </>
+          ) : (
+            <p><Link to="/login">{t('loginFirst')}</Link>{t('toReview')}</p>
+          )}
+          {reviewMessage && <p role="status">{reviewMessage}</p>}
+        </form>
+      </section>
     </main>
   )
 }

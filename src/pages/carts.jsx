@@ -12,6 +12,7 @@ const translations = {
     continue: 'Продолжить покупки',
     emptyTitle: 'Пока здесь пусто',
     emptyText: 'Самое время найти что-то своё.',
+    loadingCart: 'Загружаем корзину...',
     catalog: 'Перейти в каталог',
     remove: 'Удалить',
     quantity: 'Количество',
@@ -42,6 +43,7 @@ const translations = {
     continue: 'Сатып алууну улантуу',
     emptyTitle: 'Азырынча бош',
     emptyText: 'Өзүңө жаккан нерсени табууга убакыт келди.',
+    loadingCart: 'Себет жүктөлүүдө...',
     catalog: 'Каталогго өтүү',
     remove: 'Өчүрүү',
     quantity: 'Саны',
@@ -72,6 +74,7 @@ const translations = {
     continue: 'Continue shopping',
     emptyTitle: 'Your cart is empty',
     emptyText: 'It is time to find something you love.',
+    loadingCart: 'Loading your cart...',
     catalog: 'Go to catalog',
     remove: 'Remove',
     quantity: 'Quantity',
@@ -104,6 +107,7 @@ function Carts() {
     clearCart,
     updateQuantity,
     products = [],
+    preferencesLoading,
     language = 'ru',
   } = useOutletContext()
 
@@ -233,20 +237,26 @@ function Carts() {
 
       {cartItems.length === 0 ? (
         <div className="empty-cart">
-          <span className="empty-mark">( )</span>
+          {preferencesLoading ? (
+            <p role="status">{text.loadingCart}</p>
+          ) : (
+            <>
+              <span className="empty-mark">( )</span>
 
-          <h2>{text.emptyTitle}</h2>
-          <p>{text.emptyText}</p>
+              <h2>{text.emptyTitle}</h2>
+              <p>{text.emptyText}</p>
 
-          {checkoutMessage && (
-            <p className="admin-success" role="status">
-              {checkoutMessage}
-            </p>
+              {checkoutMessage && (
+                <p className="admin-success" role="status">
+                  {checkoutMessage}
+                </p>
+              )}
+
+              <Link className="button button-dark" to="/product">
+                {text.catalog} <span aria-hidden="true">↗</span>
+              </Link>
+            </>
           )}
-
-          <Link className="button button-dark" to="/product">
-            {text.catalog} <span aria-hidden="true">↗</span>
-          </Link>
         </div>
       ) : (
         <div className="cart-layout">

@@ -3,6 +3,8 @@ import { Link, NavLink } from 'react-router-dom'
 
 function Header({
   cartCount = 0,
+  user = null,
+  authReady = false,
   language = 'ru',
   onLanguageChange,
   t = (key) => key,
@@ -17,12 +19,26 @@ function Header({
         <NavLink to="/" end>{t('home')}</NavLink>
         <NavLink to="/product">{t('catalog')}</NavLink>
         <NavLink to="/favorites">{t('favorites')}</NavLink>
-        <NavLink to="/login">{t('login')}</NavLink>
-        <NavLink to="/register">{t('register')}</NavLink>
-        <NavLink to="/profile">{t('profile')}</NavLink>
       </nav>
 
       <div className="header-right">
+        <div className="header-auth">
+          {authReady && user ? (
+            <NavLink className="header-account" to="/profile">
+              {t('profile')}
+            </NavLink>
+          ) : authReady ? (
+            <>
+              <NavLink className="header-account" to="/login">
+                {t('login')}
+              </NavLink>
+              <NavLink className="header-register" to="/register">
+                {t('register')}
+              </NavLink>
+            </>
+          ) : null}
+        </div>
+
         <div className="language-switcher" aria-label="Выбор языка">
           {['ru', 'kg', 'en'].map((lang) => (
             <button

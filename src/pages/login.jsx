@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '../firebase'
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db } from '../firebase'
 
 const translations = {
   ru: {
@@ -69,12 +70,19 @@ function Login() {
     setLoading(true)
 
     try {
-      await signInWithEmailAndPassword(
+      const credential = await signInWithEmailAndPassword(
         auth,
         email.trim(),
         password
       )
-      navigate('/')
+      const adminSnapshot = await getDoc(
+        doc(db, 'Admins', credential.user.uid)
+      )
+      navigate(
+        adminSnapshot.exists() && adminSnapshot.data().active === true
+          ? '/admin'
+          : '/'
+      )
     } catch (error) {
       if (
         error.code === 'auth/invalid-credential' ||

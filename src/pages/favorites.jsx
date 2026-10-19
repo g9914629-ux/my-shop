@@ -35,6 +35,7 @@ function Favorites() {
     favorites = [],
     productsLoading,
     productsError,
+    preferencesLoading,
     language = 'ru',
   } = useOutletContext()
 
@@ -57,7 +58,9 @@ function Favorites() {
         <p className="heading-note">{t.note}</p>
       </div>
 
-      {productsLoading ? (
+      {preferencesLoading ? (
+        <p className="catalog-message">{t.loading}</p>
+      ) : productsLoading ? (
         <p className="catalog-message">{t.loading}</p>
       ) : productsError ? (
         <p className="catalog-message">{t.error}</p>

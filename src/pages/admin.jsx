@@ -14,7 +14,7 @@ import {
   updateDoc,
   writeBatch,
 } from 'firebase/firestore'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import { auth, db } from '../firebase'
 import { products as starterProducts } from '../data/products'
 import { getOrderStatusLabel, ORDER_STATUS_OPTIONS } from '../lib/order'
@@ -45,6 +45,12 @@ function Admin() {
   const [error, setError] = useState('')
   const [orders, setOrders] = useState([])
   const [ordersError, setOrdersError] = useState('')
+  const [productReviews, setProductReviews] = useState([])
+  const [siteReviews, setSiteReviews] = useState([])
+  const [reviewsError, setReviewsError] = useState('')
+  const [customers, setCustomers] = useState([])
+  const [customersError, setCustomersError] = useState('')
+  const [activeSection, setActiveSection] = useState('dashboard')
 
   useEffect(() => {
     let cancelled = false
@@ -115,6 +121,63 @@ function Admin() {
     )
 
     return unsubscribe
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) return
+
+    const unsubscribeProductReviews = onSnapshot(
+      collection(db, 'reviews'),
+      (snapshot) => {
+        setProductReviews(snapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data(),
+          reviewType: 'product',
+        })))
+        setReviewsError('')
+      },
+      (snapshotError) => {
+        console.error('Не удалось загрузить отзывы о товарах:', snapshotError)
+        setReviewsError('Не удалось загрузить отзывы о товарах.')
+      }
+    )
+
+    const unsubscribeSiteReviews = onSnapshot(
+      collection(db, 'siteReviews'),
+      (snapshot) => {
+        setSiteReviews(snapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data(),
+          reviewType: 'site',
+        })))
+        setReviewsError('')
+      },
+      (snapshotError) => {
+        console.error('Не удалось загрузить отзывы о магазине:', snapshotError)
+        setReviewsError('Не удалось загрузить отзывы о магазине.')
+      }
+    )
+
+    const unsubscribeCustomers = onSnapshot(
+      query(collection(db, 'users'), orderBy('createdAt', 'desc')),
+      (snapshot) => {
+        setCustomers(snapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data(),
+        })))
+        setCustomersError('')
+      },
+      (snapshotError) => {
+        console.error('Не удалось загрузить пользователей:', snapshotError)
+        setCustomersError('Не удалось загрузить пользователей.')
+      }
+    )
+
+    return () => {
+      unsubscribeProductReviews()
+      unsubscribeSiteReviews()
+      unsubscribeCustomers()
+    }
   }, [isAdmin])
 
   async function handleLogin(event) {
@@ -338,6 +401,49 @@ function Admin() {
     }
   }
 
+  async function handleReviewStatusChange(review, status) {
+    setBusy(true)
+    setMessage('')
+    setError('')
+
+    try {
+      const collectionName =
+        review.reviewType === 'site' ? 'siteReviews' : 'reviews'
+      await updateDoc(doc(db, collectionName, review.id), {
+        status,
+        moderatedAt: serverTimestamp(),
+        moderatedBy: user.uid,
+      })
+      setMessage(status === 'approved' ? 'Отзыв опубликован.' : 'Отзыв скрыт.')
+    } catch (reviewError) {
+      console.error('Не удалось изменить статус отзыва:', reviewError)
+      setError('Не удалось изменить статус отзыва. Проверь правила Firestore.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDeleteReview(review) {
+    if (!window.confirm('Удалить этот отзыв без возможности восстановления?')) {
+      return
+    }
+
+    setBusy(true)
+    setMessage('')
+    setError('')
+    try {
+      const collectionName =
+        review.reviewType === 'site' ? 'siteReviews' : 'reviews'
+      await deleteDoc(doc(db, collectionName, review.id))
+      setMessage('Отзыв удалён.')
+    } catch (reviewError) {
+      console.error('Не удалось удалить отзыв:', reviewError)
+      setError('Не удалось удалить отзыв. Проверь правила Firestore.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (checkingAccess) {
     return (
       <main className="admin-page page-width">
@@ -409,20 +515,84 @@ function Admin() {
     )
   }
 
+  const navigationSections = [
+    { id: 'dashboard', label: 'Дашборд' },
+    { id: 'products', label: 'Товары', count: products.length },
+    { id: 'orders', label: 'Заказы', count: orders.length },
+    {
+      id: 'reviews',
+      label: 'Отзывы',
+      count: productReviews.length + siteReviews.length,
+    },
+    { id: 'users', label: 'Пользователи', count: customers.length },
+  ]
+  const activeSectionLabel =
+    navigationSections.find((section) => section.id === activeSection)?.label ||
+    'Дашборд'
+
   return (
     <main className="admin-page page-width">
-      <div className="admin-topbar">
-        <div>
-          <p className="eyebrow">Панель управления</p>
-          <h1>Товары <span>{products.length}</span></h1>
-        </div>
-        <button className="admin-logout" onClick={() => signOut(auth)}>
-          Выйти <span aria-hidden="true">↗</span>
-        </button>
-      </div>
+      <div className="admin-shell">
+        <aside className="admin-sidebar">
+          <Link className="admin-brand" to="/">My-Shop<span>.</span></Link>
+          <p className="admin-sidebar-label">УПРАВЛЕНИЕ</p>
+          <nav className="admin-navigation" aria-label="Разделы админки">
+            {navigationSections.map((section) => (
+              <button
+                className={`admin-nav-button${activeSection === section.id ? ' active' : ''}`}
+                key={section.id}
+                type="button"
+                onClick={() => setActiveSection(section.id)}
+                aria-current={activeSection === section.id ? 'page' : undefined}
+              >
+                <span>{section.label}</span>
+                {section.count !== undefined && (
+                  <span className="admin-nav-count">{section.count}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+          <div className="admin-sidebar-footer">
+            <span title={user.email || user.uid}>{user.displayName || user.email || 'Администратор'}</span>
+            <button className="admin-logout" onClick={() => signOut(auth)}>
+              Выйти <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </aside>
 
-      <div className="admin-layout">
-        <section className="admin-editor">
+        <div className="admin-main">
+          <div className="admin-topbar">
+            <div>
+              <p className="eyebrow">Панель управления</p>
+              <h1>{activeSectionLabel}</h1>
+            </div>
+          </div>
+
+          <section className="admin-dashboard-section" hidden={activeSection !== 'dashboard'}>
+            <p className="admin-dashboard-welcome">
+              Добро пожаловать в панель управления магазином.
+            </p>
+            <div className="admin-stat-grid">
+              <button className="admin-stat-card" onClick={() => setActiveSection('products')}>
+                <span>Товары</span><strong>{products.length}</strong>
+              </button>
+              <button className="admin-stat-card" onClick={() => setActiveSection('orders')}>
+                <span>Заказы</span><strong>{orders.length}</strong>
+              </button>
+              <button className="admin-stat-card" onClick={() => setActiveSection('reviews')}>
+                <span>Отзывы</span><strong>{productReviews.length + siteReviews.length}</strong>
+              </button>
+              <button className="admin-stat-card" onClick={() => setActiveSection('users')}>
+                <span>Пользователи</span><strong>{customers.length}</strong>
+              </button>
+            </div>
+          </section>
+
+          <div
+            className={`admin-layout${activeSection === 'orders' ? ' admin-layout-orders' : ''}`}
+            hidden={activeSection !== 'products' && activeSection !== 'orders'}
+          >
+        <section className="admin-editor" hidden={activeSection !== 'products'}>
           <p className="eyebrow">
             {editingId ? 'Изменить товар' : 'Новая позиция'}
           </p>
@@ -573,7 +743,7 @@ function Admin() {
         </section>
 
         <div className="admin-side-stack">
-          <section className="admin-list">
+          <section className="admin-list" hidden={activeSection !== 'products'}>
             <div className="admin-list-heading">
               <div>
                 <p className="eyebrow">Каталог Firebase</p>
@@ -630,7 +800,7 @@ function Admin() {
             )}
           </section>
 
-          <section className="admin-orders">
+          <section className="admin-orders" hidden={activeSection !== 'orders'}>
             <div className="admin-list-heading">
               <div>
                 <p className="eyebrow">Заказы</p>
@@ -709,6 +879,131 @@ function Admin() {
               <p className="admin-empty">Пока нет оформленных заказов.</p>
             )}
           </section>
+        </div>
+      </div>
+
+      <section
+        className="admin-dashboard-section"
+        hidden={activeSection !== 'reviews'}
+      >
+        <div className="admin-list-heading">
+          <div>
+            <p className="eyebrow">Модерация</p>
+            <h2>Отзывы</h2>
+          </div>
+          <span className="admin-order-counter">
+            {productReviews.length + siteReviews.length}
+          </span>
+        </div>
+
+        {reviewsError ? (
+          <p className="admin-error">{reviewsError}</p>
+        ) : productReviews.length + siteReviews.length ? (
+          <div className="admin-review-list">
+            {[...siteReviews, ...productReviews]
+              .sort(
+                (first, second) =>
+                  (second.createdAt?.seconds || 0) -
+                  (first.createdAt?.seconds || 0)
+              )
+              .map((review) => {
+                const status = review.status || 'pending'
+                return (
+                  <article className="admin-review" key={`${review.reviewType}-${review.id}`}>
+                    <div className="admin-review-heading">
+                      <div>
+                        <strong>{review.userName || 'Покупатель'}</strong>
+                        <span>
+                          {review.reviewType === 'site'
+                            ? 'О магазине'
+                            : `О товаре: ${review.productName || 'Товар'}`}
+                        </span>
+                      </div>
+                      <span className={`admin-review-status review-${status}`}>
+                        {status === 'approved'
+                          ? 'Опубликован'
+                          : status === 'rejected'
+                            ? 'Скрыт'
+                            : 'Ожидает проверки'}
+                      </span>
+                    </div>
+                    <p className="admin-review-rating">
+                      {'★'.repeat(Number(review.rating) || 0)}
+                      {'☆'.repeat(5 - (Number(review.rating) || 0))}
+                    </p>
+                    <p className="admin-review-text">{review.text}</p>
+                    <div className="admin-review-actions">
+                      {status !== 'approved' && (
+                        <button
+                          className="admin-action"
+                          onClick={() => handleReviewStatusChange(review, 'approved')}
+                          disabled={busy}
+                        >
+                          Принять и опубликовать
+                        </button>
+                      )}
+                      {status !== 'rejected' && (
+                        <button
+                          className="admin-action"
+                          onClick={() => handleReviewStatusChange(review, 'rejected')}
+                          disabled={busy}
+                        >
+                          Скрыть
+                        </button>
+                      )}
+                      <button
+                        className="admin-action delete-action"
+                        onClick={() => handleDeleteReview(review)}
+                        disabled={busy}
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
+          </div>
+        ) : (
+          <p className="admin-empty">Отзывов пока нет.</p>
+        )}
+      </section>
+
+      <section
+        className="admin-dashboard-section"
+        hidden={activeSection !== 'users'}
+      >
+        <div className="admin-list-heading">
+          <div>
+            <p className="eyebrow">Аккаунты</p>
+            <h2>Пользователи</h2>
+          </div>
+          <span className="admin-order-counter">{customers.length}</span>
+        </div>
+
+        {customersError ? (
+          <p className="admin-error">{customersError}</p>
+        ) : customers.length ? (
+          <div className="admin-customer-list">
+            {customers.map((customer) => (
+              <article className="admin-customer" key={customer.id}>
+                <div>
+                  <strong>{customer.displayName || 'Без имени'}</strong>
+                  <span>{customer.email || 'Email не указан'}</span>
+                </div>
+                <small>
+                  {customer.createdAt?.toDate
+                    ? new Date(customer.createdAt.toDate()).toLocaleDateString('ru-RU')
+                    : 'Дата регистрации не указана'}
+                </small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="admin-empty">
+            Пользователи появятся здесь после входа в аккаунт на сайте.
+          </p>
+        )}
+      </section>
         </div>
       </div>
     </main>

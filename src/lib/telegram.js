@@ -21,7 +21,15 @@ export async function sendOrderToTelegram(order) {
     }),
   })
 
-  const payload = await response.json()
+  const responseText = await response.text()
+  let payload
+  try {
+    payload = JSON.parse(responseText)
+  } catch {
+    throw new Error(
+      `Telegram API returned an invalid response (HTTP ${response.status})`
+    )
+  }
 
   if (!response.ok || !payload.ok) {
     throw new Error(

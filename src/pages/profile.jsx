@@ -1,12 +1,21 @@
 
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { getOrderStatusLabel } from '../lib/order'
+import { ProductGrid } from './product'
 
 function Profile() {
+  const {
+    cart = [],
+    favorites = [],
+    products = [],
+    productsLoading,
+    productsError,
+    preferencesLoading,
+  } = useOutletContext()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState([])
@@ -15,6 +24,7 @@ function Profile() {
   const [name, setName] = useState('')
   const [nameMessage, setNameMessage] = useState('')
   const navigate = useNavigate()
+  const cartCount = cart.reduce((total, item) => total + item.quantity, 0)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -145,6 +155,40 @@ function Profile() {
         >
           Выйти из аккаунта
         </button>
+      </section>
+
+      <section className="profile-shortcuts" aria-label="Мои разделы">
+        <Link className="profile-shortcut" to="/carts">
+          <span>Корзина</span>
+          <strong>{cartCount}</strong>
+          <small>Товары, выбранные для покупки</small>
+        </Link>
+      </section>
+
+      <section className="profile-favorites">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Твои любимые товары</p>
+            <h2>Избранное ({favorites.length})</h2>
+          </div>
+          <Link className="text-link" to="/favorites">
+            Все избранное <span aria-hidden="true">↗</span>
+          </Link>
+        </div>
+
+        {preferencesLoading ? (
+          <p>Загружаем избранное из аккаунта...</p>
+        ) : productsLoading ? (
+          <p>Загружаем избранное...</p>
+        ) : productsError ? (
+          <p className="admin-error">Не удалось загрузить избранное.</p>
+        ) : favorites.length ? (
+          <ProductGrid
+            items={products.filter((product) => favorites.includes(product.id))}
+          />
+        ) : (
+          <p>Пока нет избранных товаров. Добавь товар, нажав на сердечко.</p>
+        )}
       </section>
 
       <section className="profile-orders">

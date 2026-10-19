@@ -31,20 +31,121 @@ service cloud.firestore {
     }
 
     match /reviews/{reviewId} {
-      allow read: if true;
+      allow read: if resource.data.status == 'approved'
+        || (
+          request.auth != null
+          && (
+            resource.data.userId == request.auth.uid
+            || isAdmin()
+          )
+        );
 
       allow create: if request.auth != null
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.rating is number
         && request.resource.data.rating >= 1
         && request.resource.data.rating <= 5
-        && request.resource.data.text is string;
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 1000
+        && request.resource.data.status == 'pending';
 
-      allow update, delete: if request.auth != null
+      allow update: if isAdmin();
+      allow delete: if request.auth != null
+        && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /siteReviews/{reviewId} {
+      allow read: if resource.data.status == 'approved'
+        || (
+          request.auth != null
+          && (
+            resource.data.userId == request.auth.uid
+            || isAdmin()
+          )
+        );
+
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userName is string
+        && request.resource.data.userName.size() > 0
+        && request.resource.data.userName.size() <= 100
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 1000
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt is timestamp;
+
+      allow update: if isAdmin();
+      allow delete: if request.auth != null
         && (
           resource.data.userId == request.auth.uid
           || isAdmin()
         );
+    }
+
+    match /userPreferences/{userId} {
+      allow read: if request.auth != null
+        && request.auth.uid == userId;
+
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'cart',
+          'favorites',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'cart',
+          'favorites',
+          'updatedAt'
+        ])
+        && request.resource.data.cart is list
+        && request.resource.data.favorites is list
+        && request.resource.data.updatedAt is timestamp;
+
+      allow delete: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'displayName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'displayName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt is timestamp;
+
+      allow delete: if isAdmin();
     }
   }
 }
